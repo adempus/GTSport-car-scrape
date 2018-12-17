@@ -7,7 +7,8 @@ import os
 import json
 
 link = 'https://www.kudosprime.com/gts/carlist.php?start='
-filePath = 'cardata.json'
+filePath = '/home/adempus/Documents/Jupyter_Notebooks/GTSport_Jupyter_Sketch/cardata.json'
+heads = {'Accept': 'text/html', 'User-Agent': 'Mozilla/5.0'}
 
 def reqHtml(url, headers=heads):
     req = Request(url, headers=heads)
@@ -15,43 +16,62 @@ def reqHtml(url, headers=heads):
     beauSoup = BeautifulSoup(webpage)  
     return beauSoup
 
-def getCarList(pageno):
+def getCarList(index):
     heads = {'Accept': 'text/html', 'User-Agent': 'Mozilla/5.0'}
-    page = reqHtml(link+str(pageno))
+    page = reqHtml(link+str(index))
     return page.find_all('div', {'id': {'carlist'}})
     
-def getCarNames(pageno):
-    carList = getCarList(pageno)
-    return [c.get_text() for c in carList[0].find_all(class_='name')]
+def getCarNames(carList):
+    return [c.get_text().strip() for c in carList[0].find_all(class_='name')]
 
-def getCarCty(pageno):
-    carList = getCarList(pageno)
-    return [c.get_text() for c in carList[0].find_all(class_='cty')]
+def getCarCty(carList):
+    return [c.get_text().strip() for c in carList[0].find_all(class_='cty')]
 
-def getCarDrivetrain(pageno):
-    carList = getCarList(pageno)
-    return [c.get_text() for c in carList[0].find_all(class_='tr')]
+def getCarDrivetrain(carList):
+    return [c.get_text().strip() for c in carList[0].find_all(class_='tr')]
 
-def getCarTpw(pageno):
-    carList = getCarList(pageno)
-    twpList = [str(c.get_text()) for c in carList[0].find_all(class_='tpw')]
+def getCarTpw(carList):
+    twpList = [str(c.get_text()).strip() for c in carList[0].find_all(class_='tpw')]
     data = {"hp": [], "lbs": []}
     for twp in twpList:
         twpData = re.split('[a-zA-Z]', twp) # all we want are numeric data values
         hp, lbs = list(filter(lambda x: x is not "", twpData))[0:2]
-        data['hp'].append(hp)
-        data['lbs'].append(lbs)
+        data['hp'].append(hp.strip())
+        data['lbs'].append(lbs.strip())
     return data
 
-def getCarStats(pageno):
-    carList = getCarList(pageno)
-    getVal = lambda attr: [c.get_text() for c in carList[0].find_all(class_=attr)]
+def getCarStats(carList):
+    getVal = lambda attr: [c.get_text().strip() for c in carList[0].find_all(class_=attr)]
     stats = {
         'speed': getVal('sp'), 'acceleration': getVal('ac'), 'breaking': getVal('br'),
         'cornering': getVal('ha'), 'stability':  getVal('la'), 'rating': getVal('av')
     }
     return stats
 
+def getCarData(index):
+    carList = getCarList(index)
+    return {
+        'names': getCarNames(carList), 'categories': getCarCty(carList), 
+        'drivetrains': getCarDrivetrain(carList), 'tpws': getCarTpw(carList),
+        'stats': getCarStats(carList)
+    }
+    
+def initScrape():
+    results = {}
+    car = lambda n, c, d, h, l, s: {
+        'name': n, 'category': c, 'drivetrain': d, 'hp': h, 'lbs': l, 'stats': s 
+    }
+    index, pageNo = 0, 0
+    while index <= 250:
+        carData = getCarData(index)
+        results[pageNo] = car(
+            carData['names'], carData['categories'], carData['drivetrains'],
+            carData['tpws']['hp'], carData['tpws']['lbs'], carData['stats']
+        )
+        index += 50 
+        pageNo += 1
+    return results
+         
 def writeFile(data, path):
     with open(path, 'w') as jsonFile:
         content = json.dumps(data)
@@ -61,23 +81,6 @@ def readFile(path):
     with open(path, 'r') as jsonFile:
         content = json.load(jsonFile)
         return content
-        
-def initScrape():
-    data = {}
-    car = lambda n, c, d, h, l, s: {
-        'name': n, 'category': c, 'drivetrain': d, 'hp': h, 'lbs': l, 'stats': s 
-    }
-    index, pageNo = 0, 0
-    while index <= 250:
-        tpw = getCarTpw(index)
-        data[pageNo] = car(
-            getCarNames(index), getCarCty(index), getCarDrivetrain(index),
-            tpw['hp'], tpw['lbs'], getCarStats(index)
-        )
-        index += 50 
-        pageNo += 1
-    return data
-         
     
 if '__main__' == __name__:
     cars = None
@@ -94,4 +97,3 @@ if '__main__' == __name__:
 
 # a pandas dataframe is a tabular (2D) representation of data in pandas
 # df = pd.DataFrame()
-
